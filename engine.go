@@ -29,19 +29,31 @@ type photo struct {
 	W, H    int // as displayed (camera rotation applied)
 	Orient  int
 	Sim     int // % similarity to the main photo of its look-alike set
+
+	// face checks (look-alike sets only)
+	Faces    []face
+	Blinks   int  // faces with eyes closed compared with the other frames
+	Soft     bool // faces less sharp than in the best frame
+	Sharpest bool // best faces in the set
 }
 
 // A set is a group of files that are copies of one picture.
 // Kind is "exact" (all byte-identical) or "similar" (look-alikes).
 // Files[0] is the suggested keeper.
 type dupSet struct {
-	ID    int
-	Kind  string
-	Files []*photo
+	ID       int
+	Kind     string
+	Files    []*photo
+	FacePick bool // the keeper was chosen by the face checks
+}
+
+type scanOptions struct {
+	Level sensitivity
+	Faces bool // check faces in look-alike sets
 }
 
 type progress struct {
-	Phase string // finding, reading, comparing
+	Phase string // finding, reading, comparing, faces
 	Done  int64
 	Total int64
 }
@@ -49,6 +61,8 @@ type progress struct {
 type scanResult struct {
 	Root       string
 	Level      sensitivity
+	Faces      bool
+	Remembered int // photos not re-read because DDupe remembered them
 	Photos     []*photo
 	Sets       []*dupSet
 	Unreadable int
@@ -63,11 +77,9 @@ func isPhotoFile(name string) bool {
 	return false
 }
 
-func isSkippedDir(name string) bool {
-	return strings.EqualFold(name, "DUPES") || strings.EqualFold(name, "_Duplicates")
-}
-
-func scan(ctx context.Context, root string, level sensitivity, prog *progress, mu *sync.Mutex) (*scanResult, error) {
+func scan(ctx context.Context, root string, opt scanOptions, prog *progress, mu *sync.Mutex) (*scanResult, error) {
+	level := opt.Level
+	cache := openCache()
 	start := time.Now()
 	set := func(phase string, done, total int64) {
 		mu.Lock()
@@ -86,7 +98,7 @@ func scan(ctx context.Context, root string, level sensitivity, prog *progress, m
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && isSkippedDir(d.Name()) {
+			if p != root && isSkippedDir(p, d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -108,7 +120,7 @@ func scan(ctx context.Context, root string, level sensitivity, prog *progress, m
 	// 2. Read and fingerprint every photo, in parallel
 	total := int64(len(photos))
 	set("reading", 0, total)
-	var done int64
+	var done, remembered int64
 	jobs := make(chan *photo)
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -116,7 +128,14 @@ func scan(ctx context.Context, root string, level sensitivity, prog *progress, m
 		go func() {
 			defer wg.Done()
 			for ph := range jobs {
-				analyze(ph)
+				if e := cache.get(ph); e != nil {
+					ph.SHA, ph.PHash, ph.DHash, ph.HashOK = e.SHA, e.PHash, e.DHash, e.HashOK
+					ph.W, ph.H, ph.Orient = e.W, e.H, e.Orient
+					atomic.AddInt64(&remembered, 1)
+				} else {
+					analyze(ph)
+					cache.put(ph, nil)
+				}
 				n := atomic.AddInt64(&done, 1)
 				if n%8 == 0 || n == total {
 					set("reading", n, total)
@@ -125,18 +144,27 @@ func scan(ctx context.Context, root string, level sensitivity, prog *progress, m
 		}()
 	}
 feed:
-	for _, ph := range photos {
+	for i, ph := range photos {
 		select {
 		case <-ctx.Done():
 			break feed
 		case jobs <- ph:
 		}
+		if i%500 == 0 {
+			cache.saveIfDue()
+		}
 	}
 	close(jobs)
 	wg.Wait()
+	cache.save() // keep what was learned, even if the scan was stopped
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	seen := make(map[string]bool, len(photos))
+	for _, ph := range photos {
+		seen[cacheKey(ph.Path)] = true
+	}
+	cache.forgetMissing(root, seen)
 
 	// 3. Exact duplicates
 	bySHA := map[string][]*photo{}
@@ -155,10 +183,10 @@ feed:
 
 	// 4. Look-alikes (one representative per exact group)
 	var reps []*photo
-	seen := map[string]bool{}
+	seenSHA := map[string]bool{}
 	for _, ph := range photos {
-		if ph.HashOK && !seen[ph.SHA] {
-			seen[ph.SHA] = true
+		if ph.HashOK && !seenSHA[ph.SHA] {
+			seenSHA[ph.SHA] = true
 			reps = append(reps, ph)
 		}
 	}
@@ -181,11 +209,111 @@ feed:
 			sets = append(sets, &dupSet{Kind: "exact", Files: g})
 		}
 	}
+	// 6. Face checks: blinks and focus, and the best frame to keep.
+	if opt.Faces {
+		if err := checkFaces(ctx, sets, cache, set); err != nil {
+			cache.save()
+			return nil, err
+		}
+	}
+	cache.save()
+
 	sort.Slice(sets, func(i, j int) bool { return sets[i].Files[0].Path < sets[j].Files[0].Path })
 	for i, s := range sets {
 		s.ID = i + 1
 	}
-	return &scanResult{Root: root, Level: level, Photos: photos, Sets: sets, Unreadable: unreadable, Took: time.Since(start)}, nil
+	return &scanResult{Root: root, Level: level, Faces: opt.Faces, Remembered: int(remembered), Photos: photos, Sets: sets, Unreadable: unreadable, Took: time.Since(start)}, nil
+}
+
+// checkFaces looks at the faces in every look-alike set (only those photos,
+// so even whole-drive scans stay quick), flags blinks and soft focus, and
+// moves the best frame to the front of its set as the suggested keeper.
+func checkFaces(ctx context.Context, sets []*dupSet, cache *fpCache, set func(string, int64, int64)) error {
+	var todo []*photo
+	known := map[string]faceInfo{} // by file content: exact copies share results
+	for _, s := range sets {
+		if s.Kind != "similar" {
+			continue
+		}
+		for _, ph := range s.Files {
+			if _, ok := known[ph.SHA]; ok {
+				continue
+			}
+			if fi, ok := cache.facesFor(ph); ok {
+				known[ph.SHA] = fi
+				continue
+			}
+			known[ph.SHA] = faceInfo{}
+			todo = append(todo, ph)
+		}
+	}
+	total := int64(len(todo))
+	set("faces", 0, total)
+	var mu sync.Mutex
+	var done int64
+	jobs := make(chan *photo)
+	var wg sync.WaitGroup
+	for w := 0; w < max(1, runtime.NumCPU()-1); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ph := range jobs {
+				fi := analyzeFaces(ph)
+				cache.put(ph, &fi)
+				mu.Lock()
+				known[ph.SHA] = fi
+				mu.Unlock()
+				set("faces", atomic.AddInt64(&done, 1), total)
+			}
+		}()
+	}
+feed:
+	for i, ph := range todo {
+		select {
+		case <-ctx.Done():
+			break feed
+		case jobs <- ph:
+		}
+		if i%100 == 0 {
+			cache.saveIfDue()
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	for _, s := range sets {
+		if s.Kind != "similar" {
+			continue
+		}
+		infos := make([]faceInfo, len(s.Files))
+		for i, ph := range s.Files {
+			infos[i] = known[ph.SHA]
+			ph.Faces = infos[i].Faces
+		}
+		verdicts, best := judgeSet(s, infos)
+		for i, ph := range s.Files {
+			ph.Blinks, ph.Soft, ph.Sharpest = verdicts[i].Blinks, verdicts[i].Soft, verdicts[i].Sharpest
+			ph.Faces = verdicts[i].Confirmed
+		}
+		if best > 0 {
+			keep := s.Files[best]
+			rest := append([]*photo{keep}, s.Files[:best]...)
+			s.Files = append(rest, s.Files[best+1:]...)
+			s.FacePick = true
+			// match % is measured against the keeper
+			for _, ph := range s.Files {
+				if ph.SHA == keep.SHA {
+					ph.Sim = 100
+				} else {
+					ph.Sim = similarityPct(keep, ph)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func analyze(ph *photo) {

@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const version = "2.3"
+const version = "2.4"
 
 //go:embed ui
 var uiFiles embed.FS
@@ -237,6 +237,7 @@ func (a *app) handleScan(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path  string `json:"path"`
 		Level int    `json:"level"`
+		Faces bool   `json:"faces"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		http.Error(w, "bad request", 400)
@@ -263,7 +264,7 @@ func (a *app) handleScan(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 	addRecent(root)
 
-	logf("Scan started: %s (%s matching)", root, levels[req.Level].Name)
+	logf("Scan started: %s (%s matching, face checks %v)", root, levels[req.Level].Name, req.Faces)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -273,9 +274,9 @@ func (a *app) handleScan(w http.ResponseWriter, r *http.Request) {
 				a.mu.Unlock()
 			}
 		}()
-		res, err := scan(ctx, root, levels[req.Level], &a.prog, &a.mu)
+		res, err := scan(ctx, root, scanOptions{Level: levels[req.Level], Faces: req.Faces}, &a.prog, &a.mu)
 		if err == nil {
-			logf("Scan finished: %d photos, %d sets, %d unreadable, %s", len(res.Photos), len(res.Sets), res.Unreadable, res.Took.Round(time.Second))
+			logf("Scan finished: %d photos (%d remembered), %d sets, %d unreadable, %s", len(res.Photos), res.Remembered, len(res.Sets), res.Unreadable, res.Took.Round(time.Second))
 		} else {
 			logf("Scan ended: %v", err)
 		}
@@ -324,12 +325,24 @@ type fileJSON struct {
 	Date   string `json:"date"`
 	Sim    int    `json:"sim"`
 	Same   bool   `json:"same"` // byte-identical to the set's main photo
+
+	Faces    []faceJSON `json:"faces,omitempty"`
+	Blinks   int        `json:"blinks,omitempty"`
+	Soft     bool       `json:"soft,omitempty"`
+	Sharpest bool       `json:"sharpest,omitempty"`
+}
+
+// faceJSON: a face's box and eyes, as fractions of the photo's width.
+type faceJSON struct {
+	X, Y, S float64
+	Eyes    [4]float64
 }
 
 type setJSON struct {
-	ID    int        `json:"id"`
-	Kind  string     `json:"kind"`
-	Files []fileJSON `json:"files"`
+	ID       int        `json:"id"`
+	Kind     string     `json:"kind"`
+	Files    []fileJSON `json:"files"`
+	FacePick bool       `json:"facePick,omitempty"`
 }
 
 func (a *app) handleResults(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +355,7 @@ func (a *app) handleResults(w http.ResponseWriter, r *http.Request) {
 	}
 	sets := make([]setJSON, 0, len(res.Sets))
 	for _, s := range res.Sets {
-		sj := setJSON{ID: s.ID, Kind: s.Kind}
+		sj := setJSON{ID: s.ID, Kind: s.Kind, FacePick: s.FacePick}
 		for i, ph := range s.Files {
 			rel, err := filepath.Rel(res.Root, filepath.Dir(ph.Path))
 			if err != nil || rel == "." {
@@ -352,13 +365,18 @@ func (a *app) handleResults(w http.ResponseWriter, r *http.Request) {
 			if s.Kind == "similar" && i > 0 && ph.SHA != s.Files[0].SHA {
 				sim = ph.Sim
 			}
-			sj.Files = append(sj.Files, fileJSON{ID: ph.ID, Name: filepath.Base(ph.Path), Folder: rel, Size: ph.Size,
-				W: ph.W, H: ph.H, Date: ph.ModTime.Format("Jan 2, 2006"), Sim: sim, Same: ph.SHA == s.Files[0].SHA})
+			fj := fileJSON{ID: ph.ID, Name: filepath.Base(ph.Path), Folder: rel, Size: ph.Size,
+				W: ph.W, H: ph.H, Date: ph.ModTime.Format("Jan 2, 2006"), Sim: sim, Same: ph.SHA == s.Files[0].SHA,
+				Blinks: ph.Blinks, Soft: ph.Soft, Sharpest: ph.Sharpest}
+			for _, f := range ph.Faces {
+				fj.Faces = append(fj.Faces, faceJSON{X: f.X, Y: f.Y, S: f.Size, Eyes: f.EyePos})
+			}
+			sj.Files = append(sj.Files, fj)
 		}
 		sets = append(sets, sj)
 	}
 	writeJSON(w, map[string]any{
-		"root": res.Root, "scanned": len(res.Photos), "unreadable": res.Unreadable,
+		"root": res.Root, "scanned": len(res.Photos), "unreadable": res.Unreadable, "remembered": res.Remembered, "faces": res.Faces,
 		"level": res.Level.Name, "seconds": int(res.Took.Seconds()), "sets": sets,
 	})
 }

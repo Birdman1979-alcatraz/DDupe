@@ -1,5 +1,12 @@
 # DDupe version history
 
+## 2.4
+- **Face checks in look-alike sets:** flags **eyes closed** and **soft focus**, marks the frame with the **sharpest faces**, and keeps the eyes-open, sharpest frame when the usual keeper has a blink or soft faces. Runs entirely on your computer using the open-source pigo face finder.
+- **Show faces found** in the full-size viewer (or press **F**) draws each face and eye DDupe found.
+- **Whole-drive scanning:** Windows' system folders, app data, the Recycle Bin and Lightroom preview caches are skipped automatically.
+- **Fingerprint memory:** unchanged photos aren't read again, so rescans are dramatically faster and a stopped scan picks up where it left off.
+- The spreadsheets and printable report gain a **Face check** column.
+
 ## 2.3
 - Spreadsheets are now saved to **Documents\DDupe Reports** instead of inside DUPES, so they survive when you delete the DUPES folder and build up a lasting history of every cleanup.
 - The finish screen mentions the spreadsheet with a small **View it** link instead of a button. Spreadsheets never open by themselves.

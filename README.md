@@ -22,21 +22,45 @@ I worked for many years as a commercial and industrial photographer, and later a
 
 - **Exact duplicates:** byte-for-byte identical files, even with different names.
 - **Look-alikes:** the same picture saved again. That includes resized, re-compressed, brightened, colour-adjusted, black and white, rotated, date-stamped or slightly cropped copies.
+- **The best shot in a burst** (new in 2.4). In look-alike sets, DDupe checks faces for **blinks** and **soft focus**, and keeps the frame where eyes are open and faces are sharpest.
 
 ## How to use it
 
-1. **Open DDupe.exe** and click **Choose folder** (or paste a path, or pick a recent folder). Every subfolder is included.
+1. **Open DDupe.exe** and click **Choose folder** (or paste a path, or pick a recent folder). Every subfolder is included. You can pick a **whole drive**, like `D:\`.
 2. **Choose how close a copy needs to be:**
    - **Strict:** only resized, re-saved or rotated copies
    - **Normal** (recommended): also edited, brightened, stamped or slightly cropped copies
    - **Loose:** also heavier crops and near-identical frames from the same moment (check these by eye)
-3. **Scan.** A film-strip progress bar shows how far along it is. You can stop at any time.
-4. **Review the contact sheet.** Each set of duplicates is a strip. The photo that stays is circled in grease pencil, and the others are marked to move.
+3. **Leave "Check faces in look-alikes" on** (recommended) to catch blinks and soft focus.
+4. **Scan.** A film-strip progress bar shows how far along it is. You can stop at any time.
+5. **Review the contact sheet.** Each set of duplicates is a strip. The photo that stays is circled in grease pencil, and the others are marked to move.
    - **Click any photo** to switch it between keep and move. Every set always keeps at least one photo.
    - Filter by exact copies or look-alikes, or sort by most space saved.
-5. **Look closer** with the magnifying-glass button on any photo (see below).
-6. **Move.** Click **Move files** and confirm. The extras go into a **DUPES** folder inside your photo folder, keeping their subfolders.
-7. **When you're happy,** delete the DUPES folder yourself to free the space. To clean another folder, click **New scan**.
+6. **Look closer** with the magnifying-glass button on any photo (see below).
+7. **Move.** Click **Move files** and confirm. The extras go into a **DUPES** folder inside your photo folder, keeping their subfolders.
+8. **When you're happy,** delete the DUPES folder yourself to free the space. To clean another folder, click **New scan**.
+
+## Face checks: blinks and focus
+
+When several frames of the same moment are found (a burst, or near-identical portraits), DDupe looks at the faces in each one:
+
+- **Eyes closed:** someone blinked in this frame but not in the others.
+- **Soft focus:** the faces are noticeably less sharp than in the best frame.
+- **Sharpest faces:** the best frame of the set.
+
+If the frame DDupe would normally keep has a blink or soft faces, it keeps the best frame instead, and the strip says *"Keeper chosen for open eyes and sharp faces"*. You can always click to change it.
+
+- Faces are only compared between frames of the **same set**, which makes the checks reliable. A brightened, black and white or recompressed copy has the same eyes, so it is never called a blink.
+- Only photos in look-alike sets are checked, so even whole-drive scans stay quick.
+- In the full-size viewer, tick **Show faces found** (or press **F**) to see each face and eye that was found.
+- Small faces (under about 90 pixels across) are checked for focus but not for blinks.
+- This is **not** face recognition: DDupe doesn't identify or name anyone. Everything happens on your computer, and nothing is sent anywhere.
+
+## Whole drives and fast rescans
+
+- **Pick a whole drive** and DDupe scans every folder on it. It automatically skips Windows' own folders (Windows, Program Files, ProgramData, app data, the Recycle Bin, System Volume Information) and Lightroom's preview cache, so only your photos are scanned.
+- **DDupe remembers photos it has already read.** It keeps a small fingerprint file at `%LOCALAPPDATA%\DDupe\fingerprints.bin`. Photos that haven't changed are not read again, so rescanning a drive takes seconds or minutes instead of an hour, and a scan you stop picks up where it left off.
+- The fingerprint file holds each photo's location, size, date, fingerprints and face-check results (face positions and small eye-shape samples used to tell blinks from edits). It never leaves your computer, and you can delete it at any time; DDupe simply rebuilds it on the next scan.
 
 ## The magnifying glass
 
@@ -97,6 +121,7 @@ Paste that address into File Explorer's address bar to find it. It records each 
 
 - JPEG only (.jpg, .jpeg, .jpe, .jfif). RAW, PNG, TIFF and HEIC are not checked yet.
 - Heavily cropped images, and burst frames where the camera moved noticeably, may not be matched.
+- Face checks work best on faces looking toward the camera. Profiles, sunglasses and very small faces may not be found or judged.
 - Some unusual JPEGs (from old cameras or scanners) can't be read. They're skipped and counted in the results.
 
 ## Comments and suggestions
@@ -112,7 +137,7 @@ Welcome! Please open an **[Issue](../../issues)**.
 Requires [Go](https://go.dev/dl/) 1.23 or newer. No third-party libraries are used.
 
 ```
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H windowsgui" -o DDupe.exe .
+GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags="-H windowsgui" -o DDupe.exe .
 ```
 
 `-H windowsgui` makes it a window app (no console). The icon, version details and Windows manifest are pre-compiled in `rsrc_windows_amd64.syso`. To change them, edit `app.rc`, `app.manifest` or `DDupe.ico` and regenerate it, for example with LLVM:
@@ -134,6 +159,9 @@ It also builds and runs on Linux and macOS for development. Set `DDUPE_NO_WINDOW
 | `thumbs.go` | Makes preview thumbnails on demand, with a memory cache. |
 | `xlsx.go` | Writes Excel files directly (formatted headers, filters, frozen rows, clickable links). |
 | `report.go` | Printable HTML contact sheet; report file names and the reports folder. |
+| `faces.go` | Face checks: finds faces and pupils, measures face sharpness and eye opening, and picks the best frame in a set. |
+| `cache.go` | The fingerprint memory for fast rescans, and the list of system folders to skip. |
+| `pigo/`, `cascades/` | The [pigo](https://github.com/esimov/pigo) face and pupil finder by Endre Simo (MIT licence), with its trained models. One small change: a fixed random seed, so results are the same every run. |
 | `logging.go` | Activity and crash log. |
 | `native_windows.go` | Windows folder picker, opening files and folders, finding Documents, launching the app window. |
 | `ui/index.html` | The whole interface (HTML, CSS and JavaScript, embedded in the .exe). |
@@ -141,6 +169,15 @@ It also builds and runs on Linux and macOS for development. Set `DDUPE_NO_WINDOW
 ### How look-alike matching works
 
 Each photo is shrunk to a 32×32 grayscale thumbnail by averaging every pixel, after applying the camera's EXIF rotation. Two fingerprints are computed from it: a DCT-based perceptual hash and a difference hash. Two photos are look-alikes only when **both** are close enough for the chosen level. Sets are built around the largest photo, and every member must closely match it, so unrelated photos can't be chained together.
+
+### How the face checks work
+
+Faces and pupils are found with pigo on an upright grayscale copy of the photo (at most 1,600 pixels across). For each face:
+
+- **Sharpness** is the variance of the Laplacian on a 192×192 copy of the face, divided by the face's contrast so that brightness changes don't count.
+- **Eye opening** is the height of the dark part of each eye (iris and pupil) as a share of the face size. An open eye shows a dark iris many pixels tall, while a closed eye shows only a thin lash line.
+
+Faces are matched across the frames of a set by position. A face found in only a minority of frames is ignored as a false detection. A frame counts as a blink when its eye opening is under 62% of the most open frame **and** its eye shape (a brightness-normalised 24×12 sample, compared allowing a few pixels of shift) clearly differs from that frame, so tonal edits and recompression are never mistaken for blinks. Only full-size frames compete to be the keeper; smaller copies are treated as exports.
 
 ### Code signing (future)
 

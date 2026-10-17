@@ -248,8 +248,8 @@ func summarySheet(res *scanResult, rows [][]cell) sheet {
 }
 
 var allHeader = []cell{txt("Set"), txt("Type"), txt("Action"), txt("File name"), txt("Folder it is in now"), txt("Open photo"),
-	txt("Size (MB)"), txt("Width"), txt("Height"), txt("Modified"), txt("Match %")}
-var allWidths = []float64{6, 16, 16, 32, 50, 12, 10, 8, 8, 17, 9}
+	txt("Size (MB)"), txt("Width"), txt("Height"), txt("Modified"), txt("Match %"), txt("Face check")}
+var allWidths = []float64{6, 16, 16, 32, 50, 12, 10, 8, 8, 17, 9, 28}
 
 func photoRow(s *dupSet, i int, ph *photo, action, where string) []cell {
 	match := cell{}
@@ -259,7 +259,25 @@ func photoRow(s *dupSet, i int, ph *photo, action, where string) []cell {
 		match = numCell(100, stPct)
 	}
 	return []cell{intCell(s.ID), txt(kindLabel(s)), txt(action), txt(filepath.Base(ph.Path)), txt(filepath.Dir(where)),
-		link("Open", fileLink(where)), mbCell(ph.Size), intCell(ph.W), intCell(ph.H), dateCell(ph.ModTime), match}
+		link("Open", fileLink(where)), mbCell(ph.Size), intCell(ph.W), intCell(ph.H), dateCell(ph.ModTime), match, txt(faceNote(ph))}
+}
+
+// faceNote describes the face check result for a photo, for the reports.
+func faceNote(ph *photo) string {
+	var n []string
+	switch {
+	case ph.Blinks == 1:
+		n = append(n, "Eyes closed")
+	case ph.Blinks > 1:
+		n = append(n, fmt.Sprintf("%d people blinking", ph.Blinks))
+	}
+	if ph.Soft {
+		n = append(n, "Soft focus")
+	}
+	if ph.Sharpest {
+		n = append(n, "Sharpest faces")
+	}
+	return strings.Join(n, ", ")
 }
 
 // writeMovedSheet saves DUPES\DDupe_Moved_<date>.xlsx after a move.
@@ -267,7 +285,7 @@ func writeMovedSheet(res *scanResult, out *moveOutcome) (string, error) {
 	path := filepath.Join(reportsDir(res), reportName(res, "Moved")+".xlsx")
 
 	moved := [][]cell{{txt("Set"), txt("Type"), txt("File name"), txt("Moved from"), txt("Now in DUPES"), txt("Copy that was kept"),
-		txt("Size (MB)"), txt("Width"), txt("Height"), txt("Modified"), txt("Match %")}}
+		txt("Size (MB)"), txt("Width"), txt("Height"), txt("Modified"), txt("Match %"), txt("Face check")}}
 	var failed [][]cell
 	for _, r := range out.Records {
 		i := 0
@@ -292,7 +310,7 @@ func writeMovedSheet(res *scanResult, out *moveOutcome) (string, error) {
 			continue
 		}
 		moved = append(moved, []cell{intCell(r.Set.ID), txt(r.Reason), txt(filepath.Base(r.From)), txt(filepath.Dir(r.From)),
-			link(r.To, fileLink(r.To)), kept, mbCell(r.Photo.Size), intCell(r.Photo.W), intCell(r.Photo.H), dateCell(r.Photo.ModTime), match})
+			link(r.To, fileLink(r.To)), kept, mbCell(r.Photo.Size), intCell(r.Photo.W), intCell(r.Photo.H), dateCell(r.Photo.ModTime), match, txt(faceNote(r.Photo))})
 	}
 
 	newPlace := map[*photo]string{}
@@ -324,7 +342,7 @@ func writeMovedSheet(res *scanResult, out *moveOutcome) (string, error) {
 
 	sheets := []sheet{
 		summarySheet(res, sumRows),
-		{name: "Moved files", filter: true, rows: moved, widths: []float64{6, 16, 32, 50, 70, 70, 10, 8, 8, 17, 9}},
+		{name: "Moved files", filter: true, rows: moved, widths: []float64{6, 16, 32, 50, 70, 70, 10, 8, 8, 17, 9, 28}},
 		{name: "All duplicates", filter: true, rows: all, widths: allWidths},
 	}
 	if len(failed) > 0 {

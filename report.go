@@ -105,6 +105,9 @@ h1{font:600 30px/1.2 Bahnschrift,"Segoe UI",sans-serif;margin:0 0 6px}
 			if s.Kind == "similar" && i > 0 && ph.SHA != s.Files[0].SHA {
 				label += fmt.Sprintf(", %d%% match", ph.Sim)
 			}
+			if fn := faceNote(ph); fn != "" {
+				label += ", " + strings.ToLower(fn[:1]) + fn[1:]
+			}
 			u := html.EscapeString(fileURL(ph.Path))
 			fmt.Fprintf(&sb, `<div class="item %s"><a href="%s" target="_blank"><img loading="lazy" src="%s" alt=""></a><div class="tag">%s</div><div class="path"><a href="%s" target="_blank">%s</a></div><div class="meta">%d×%d, %s, %s</div></div>`,
 				cls, u, u, label, u, html.EscapeString(ph.Path), ph.W, ph.H, humanSize(ph.Size), ph.ModTime.Format("Jan 2, 2006"))
