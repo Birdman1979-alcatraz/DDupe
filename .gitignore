@@ -1,0 +1,7 @@
+# Built program (published on the Releases page instead)
+*.exe
+*.res
+# Reports DDupe writes when testing
+DDupe_Report_*
+Duplicate_Report_*
+DUPES/

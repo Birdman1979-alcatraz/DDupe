@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DDupe</title>
+<link rel="icon" href="favicon.png">
+<style>
+:root{
+  /* neutral grey, like an editing suite, so photo colours aren't skewed */
+  --bg:#2f2f2f;
+  --panel:#383838;
+  --sheet:#1c1c1c;
+  --ink:#ececec;
+  --muted:#a2a2a2;
+  --faint:#6e6e6e;
+  --line:#474747;
+  --pencil:#f0643a;   /* grease pencil: the only strong colour */
+  --edge:#d6a03c;     /* film edge printing */
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --num:Bahnschrift,"DIN Alternate","Arial Narrow",var(--ui);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.hidden{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:8px 16px;cursor:pointer;line-height:1.3}
+.btn:hover{border-color:#5d5d5d;background:#3f3f3f}
+.btn.primary{background:var(--pencil);border-color:var(--pencil);color:#1a1a1a;font-weight:600}
+.btn.primary:hover{background:#ff7a50;border-color:#ff7a50}
+.btn.quiet{background:none;border-color:transparent;color:var(--muted)}
+.btn.quiet:hover{color:var(--ink);background:#3a3a3a}
+.btn:disabled{opacity:.45;cursor:default}
+.muted{color:var(--muted)}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+
+/* ---------- top bar ---------- */
+header.app{display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid #2a2a2a;background:#2b2b2b}
+header.app img{width:26px;height:26px}
+header.app .name{font:600 17px var(--num);letter-spacing:.01em}
+header.app .ver{color:var(--faint);font-size:12px}
+header.app .spacer{flex:1}
+
+/* ---------- welcome ---------- */
+.welcome{max-width:760px;padding:56px 32px 64px;margin:0 auto}
+.welcome h1{font:600 46px/1.08 var(--num);letter-spacing:-.01em;margin:0 0 14px;max-width:16ch}
+.welcome .lede{font-size:16px;color:var(--muted);margin:0 0 36px;max-width:56ch}
+.pick{display:flex;gap:10px;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+.pick .btn.primary{padding:12px 20px;white-space:nowrap}
+.pick input{flex:1;min-width:0;background:#2c2c2c;border:1px solid var(--line);border-radius:6px;padding:0 12px}
+.pick input::placeholder{color:var(--faint)}
+.recent{margin:14px 0 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.recent span{color:var(--faint);font-size:13px;margin-right:4px}
+.chip{border:1px solid var(--line);background:none;border-radius:99px;padding:3px 12px;font-size:13px;color:var(--muted);cursor:pointer;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.chip:hover{color:var(--ink);border-color:#5d5d5d}
+fieldset{border:0;margin:40px 0 0;padding:0}
+legend{font:600 15px var(--ui);margin-bottom:10px;padding:0}
+.levels{display:grid;gap:2px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.level{display:grid;grid-template-columns:22px 92px 1fr;align-items:baseline;gap:8px;padding:12px 16px;background:var(--panel);cursor:pointer}
+.level:hover{background:#3d3d3d}
+.level input{accent-color:var(--pencil);margin:0;transform:translateY(2px)}
+.level b{font-weight:600}
+.level span{color:var(--muted)}
+.level:has(input:checked){background:#424242}
+.go{margin-top:28px;display:flex;align-items:center;gap:16px}
+.go .btn{padding:12px 24px;font-size:15px}
+.err{color:#ff9b7a;margin:12px 0 0}
+
+/* ---------- progress strip (film with sprocket holes) ---------- */
+.working{max-width:760px;margin:0 auto;padding:96px 32px}
+.working h2{font:600 30px/1.2 var(--num);margin:0 0 6px}
+.working .where{color:var(--muted);word-break:break-all;margin:0 0 40px}
+.phase{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.phase .count{font:500 18px var(--num)}
+.film{position:relative;height:44px;background:var(--sheet);border-radius:3px;overflow:hidden}
+.film::before,.film::after{content:"";position:absolute;left:0;right:0;height:6px;z-index:2;
+  background:radial-gradient(circle,#4a4a4a 0 2.2px,transparent 2.6px) 0 0/14px 6px repeat-x}
+.film::before{top:4px}.film::after{bottom:4px}
+.film .fill{position:absolute;inset:14px auto 14px 0;width:0;background:var(--pencil);transition:width .35s ease}
+.film.indeterminate .fill{width:30%!important;animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{from{left:-30%}to{left:100%}}
+.working .foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--muted)}
+
+/* ---------- results ---------- */
+.results{display:flex;flex-direction:column;min-height:100vh}
+.rhead{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid #2a2a2a;padding:16px 24px 0}
+.rhead .top{display:flex;gap:16px;align-items:flex-start}
+.rhead .folder{font:600 20px/1.25 var(--num);word-break:break-all;margin:0}
+.rhead .summary{color:var(--muted);margin:4px 0 0;max-width:90ch}
+.rhead .top .spacer{flex:1}
+.tabs{display:flex;gap:4px;align-items:center;margin-top:14px}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--muted);cursor:pointer}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--pencil)}
+.tab .n{font-family:var(--num);color:var(--faint);margin-left:4px}
+.tabs .spacer{flex:1}
+.tabs select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.hint{color:var(--faint);font-size:13px;padding:14px 24px 0;margin:0}
+.sets{padding:12px 24px 140px;display:grid;gap:14px}
+
+.strip{position:relative;background:var(--sheet);border-radius:4px;padding:18px 18px 16px 58px}
+.strip::before,.strip::after{content:"";position:absolute;left:44px;right:10px;height:5px;
+  background:radial-gradient(circle,#333 0 1.8px,transparent 2.2px) 0 0/13px 5px repeat-x}
+.strip::before{top:6px}.strip::after{bottom:5px}
+.edge{position:absolute;left:0;top:0;bottom:0;width:44px;display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:6px}
+.edge .no{font:600 17px var(--num);color:var(--edge)}
+.edge .kind{writing-mode:vertical-rl;transform:rotate(180deg);font:500 12px var(--num);color:#8a6a2c;letter-spacing:.04em}
+.strip .bar{display:flex;align-items:baseline;gap:12px;margin:0 0 12px}
+.strip .bar .t{font-weight:600}
+.strip .bar .s{color:var(--muted);font-size:13px}
+.strip .bar .spacer{flex:1}
+.strip .bar .btn{padding:3px 10px;font-size:12.5px}
+.frames{display:flex;flex-wrap:wrap;gap:22px 26px}
+
+.frame{position:relative;width:var(--w);flex:none}
+.shot{position:relative;display:block;width:100%;height:168px;padding:0;border:0;background:#262626;cursor:pointer;border-radius:2px}
+.shot img{display:block;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
+.shot .loop{position:absolute;inset:-9px -10px -10px -9px;width:calc(100% + 19px);height:calc(100% + 19px);pointer-events:none;overflow:visible}
+.shot .loop path{fill:none;stroke:var(--pencil);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.frame.move .shot img{opacity:.38}
+.frame.move .loop{display:none}
+.shot .x{position:absolute;top:8px;right:8px;width:26px;height:26px;display:none}
+.shot .x path{fill:none;stroke:var(--pencil);stroke-width:3.4;stroke-linecap:round}
+.frame.move .shot .x{display:block}
+.frame.drawn .loop path{stroke-dasharray:1;animation:draw .45s ease-out}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.loupe{position:absolute;right:6px;top:140px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(20,20,20,.72);display:grid;place-items:center;cursor:zoom-in;opacity:.8;transition:opacity .15s,transform .15s}
+.frame:hover .loupe,.loupe:focus-visible{opacity:1;transform:scale(1.08)}
+.loupe svg{width:16px;height:16px}
+.cap{margin-top:8px;font-size:12.5px;line-height:1.4}
+.cap .state{font-weight:600}
+.frame.keep .cap .state{color:var(--ink)}
+.frame.move .cap .state{color:var(--pencil)}
+.cap .state .m{font-weight:400;color:var(--muted)}
+.cap .fn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cap .meta{color:var(--faint);display:flex;flex-wrap:wrap;column-gap:10px}
+.cap .dir{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.more{height:1px}
+.empty{max-width:640px;margin:48px auto;padding:0 32px}
+.empty h2{font:600 30px var(--num);margin:0 0 8px}
+
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#262626;border-top:1px solid #1d1d1d;padding:14px 24px;display:flex;align-items:center;gap:12px}
+.actionbar .msg{flex:1;color:var(--muted)}
+.actionbar .msg b{color:var(--ink);font-family:var(--num);font-size:16px;font-weight:600}
+.actionbar .btn.primary{padding:10px 22px}
+
+/* ---------- lightbox ---------- */
+.lb{position:fixed;inset:0;z-index:50;background:#161616;display:grid;grid-template-columns:1fr 300px;grid-template-rows:1fr 112px}
+.lb .stage{position:relative;display:grid;place-items:center;padding:24px;min-height:0;overflow:hidden}
+.lb .stage img{max-width:100%;max-height:calc(100vh - 112px - 48px);object-fit:contain;box-shadow:0 0 0 1px #262626;cursor:zoom-in}
+.lb.loupe-on .stage img{cursor:none}
+/* magnifying glass: lens shows the photo at actual pixels */
+.lens{position:absolute;width:280px;height:280px;border-radius:50%;pointer-events:none;z-index:5;transform:translate(-50%,-50%);
+  background-color:#111;background-repeat:no-repeat;
+  box-shadow:0 0 0 2px #0e0e0e,0 0 0 10px #3b3b3b,0 0 0 11px #7a7a7a,0 0 0 13px #151515,0 18px 44px rgba(0,0,0,.65),
+    inset 0 0 0 1px rgba(255,255,255,.28),inset 0 10px 24px rgba(255,255,255,.10),inset 0 -14px 26px rgba(0,0,0,.35)}
+.lens::before,.lens::after{content:"";position:absolute;left:50%;top:50%;transform-origin:50% 0;border-radius:6px}
+.lens::before{width:30px;height:22px;transform:translateX(-50%) rotate(-45deg) translateY(150px);background:linear-gradient(90deg,#2b2b2b,#8a8a8a 45%,#2b2b2b)}
+.lens::after{width:24px;height:118px;transform:translateX(-50%) rotate(-45deg) translateY(170px);background:linear-gradient(90deg,#141414,#454545 40%,#1a1a1a);border-radius:10px}
+.lens .zl{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,15,15,.75);color:#eee;font:600 12px var(--num);padding:2px 8px;border-radius:99px}
+.lb .tip{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);color:var(--faint);font-size:12px;white-space:nowrap}
+.lb .nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;background:rgba(40,40,40,.7);border-radius:6px;cursor:pointer;display:grid;place-items:center}
+.lb .nav.prev{left:12px}.lb .nav.next{right:12px}
+.lb .nav svg{width:20px;height:20px}
+.lb aside{grid-row:1/3;grid-column:2;background:#212121;padding:20px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.lb aside h3{margin:0;font:600 16px/1.3 var(--ui);word-break:break-all}
+.lb dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.lb dt{color:var(--faint)}.lb dd{margin:0;word-break:break-all}
+.lb .toggle{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lb .toggle button{border:0;background:none;padding:10px;cursor:pointer;color:var(--muted)}
+.lb .toggle button[aria-pressed=true]{background:#3a3a3a;color:var(--ink);font-weight:600}
+.lb .toggle button.mv[aria-pressed=true]{color:var(--pencil)}
+.lb .keys{color:var(--faint);font-size:12px;line-height:1.7;margin-top:auto}
+.lb .keys kbd{font:11px var(--ui);border:1px solid var(--line);border-radius:3px;padding:0 5px;color:var(--muted)}
+.lb .reel{grid-column:1;display:flex;gap:10px;padding:12px 16px;overflow-x:auto;background:#1a1a1a;align-items:center}
+.lb .reel button{flex:none;height:84px;padding:0;border:2px solid transparent;background:#262626;cursor:pointer;position:relative;border-radius:2px}
+.lb .reel button img{height:100%;display:block}
+.lb .reel button.cur{border-color:#fff}
+.lb .reel button.move img{opacity:.38}
+.lb .close{position:absolute;top:12px;right:12px;z-index:2}
+
+/* ---------- dialog & toast ---------- */
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:28px;max-width:520px}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog h2{margin:0 0 10px;font:600 22px/1.25 var(--num)}
+dialog p{margin:0 0 12px;color:var(--muted)}
+dialog .row{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:#e9e9e9;color:#1a1a1a;padding:10px 18px;border-radius:8px;z-index:60;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+
+/* ---------- done ---------- */
+.done{max-width:700px;margin:0 auto;padding:96px 32px}
+.done h2{font:600 40px/1.1 var(--num);margin:0 0 14px}
+.done p{color:var(--muted);font-size:15px;max-width:58ch}
+.done .row{display:flex;gap:12px;margin-top:28px}
+.done details{margin-top:24px;color:var(--muted)}
+.sheetnote{margin-top:28px!important;font-size:13px!important;color:var(--faint)!important}
+.link{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:inherit}
+.link:hover{color:var(--ink)}
+.done details li{word-break:break-all;font-size:13px}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:760px){
+  .welcome h1{font-size:34px}.pick{flex-direction:column}.pick input{padding:10px 12px}
+  .level{grid-template-columns:22px 1fr}.level span{grid-column:2}
+  .lb{grid-template-columns:1fr;grid-template-rows:1fr 96px auto}.lb aside{grid-row:3;grid-column:1}
+}
+</style>
+</head>
+<body>
+<header class="app">
+  <img src="icon.png" alt="">
+  <span class="name">DDupe</span><span class="ver" id="ver"></span>
+  <span class="spacer"></span>
+  <button class="btn quiet" id="pastReports" title="Open Documents\DDupe Reports">Past reports</button>
+  <button class="btn quiet hidden" id="newScan">New scan</button>
+</header>
+
+<!-- welcome -->
+<main id="vWelcome" class="welcome hidden">
+  <h1>Find the duplicate photos in any folder</h1>
+  <p class="lede">DDupe finds exact copies and look-alikes, like resized, re-saved or lightly edited versions. You choose what to keep. Nothing is ever deleted.</p>
+  <div class="pick">
+    <button class="btn primary" id="choose">Choose folder</button>
+    <input id="path" placeholder="or paste a folder path, like D:\Photos\2019" spellcheck="false" aria-label="Folder path">
+  </div>
+  <div class="recent hidden" id="recent"><span>Recent</span></div>
+  <fieldset>
+    <legend>How close does a copy need to be?</legend>
+    <div class="levels">
+      <label class="level"><input type="radio" name="lvl" value="0"><b>Strict</b><span>Only resized, re-saved or rotated copies</span></label>
+      <label class="level"><input type="radio" name="lvl" value="1" checked><b>Normal</b><span>Also edited, brightened, stamped or slightly cropped copies. Best for most folders.</span></label>
+      <label class="level"><input type="radio" name="lvl" value="2"><b>Loose</b><span>Also heavier crops and near-identical frames from the same moment. Check these by eye.</span></label>
+    </div>
+  </fieldset>
+  <div class="go">
+    <button class="btn primary" id="start">Scan for duplicates</button>
+    <span class="muted" id="startNote">Subfolders are included. The DUPES folder is skipped.</span>
+  </div>
+  <p class="err hidden" id="welcomeErr" role="alert"></p>
+</main>
+
+<!-- scanning / moving -->
+<main id="vWork" class="working hidden">
+  <h2 id="workTitle">Scanning</h2>
+  <p class="where" id="workWhere"></p>
+  <div class="phase"><span id="workPhase">Looking for photos</span><span class="count" id="workCount"></span></div>
+  <div class="film" id="film"><div class="fill" id="fill"></div></div>
+  <div class="foot"><span id="workEta"></span><button class="btn" id="stop">Stop scan</button></div>
+</main>
+
+<!-- results -->
+<div id="vResults" class="results hidden">
+  <div class="rhead">
+    <div class="top">
+      <div><p class="folder" id="rFolder"></p><p class="summary" id="rSummary"></p></div>
+      <span class="spacer"></span>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-f="all" aria-selected="true">All sets<span class="n" id="nAll"></span></button>
+      <button class="tab" role="tab" data-f="exact" aria-selected="false">Exact copies<span class="n" id="nExact"></span></button>
+      <button class="tab" role="tab" data-f="similar" aria-selected="false">Look-alikes<span class="n" id="nSimilar"></span></button>
+      <span class="spacer"></span>
+      <label class="muted" for="sort">Order</label>
+      <select id="sort"><option value="folder">By folder</option><option value="space">Most space first</option><option value="count">Most copies first</option></select>
+    </div>
+  </div>
+  <p class="hint" id="hint">The circled photo in each set stays where it is. Click any photo to switch it between keep and move. Use the magnifying glass to look closer.</p>
+  <div class="sets" id="sets"></div>
+  <div class="empty hidden" id="emptyState">
+    <h2>No duplicates in this folder</h2>
+    <p class="muted" id="emptyText"></p>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn primary hidden" id="tryLoose">Scan again with Loose matching</button>
+      <button class="btn" id="emptyNew">Choose another folder</button>
+    </div>
+  </div>
+  <div class="actionbar" id="actionbar">
+    <span class="msg" id="barMsg"></span>
+    <button class="btn" id="report">Save report</button>
+    <button class="btn primary" id="moveBtn">Move files</button>
+  </div>
+</div>
+
+<!-- lost contact -->
+<main id="vLost" class="done hidden" role="alert">
+  <h2>Waiting for DDupe</h2>
+  <p id="lostText"></p>
+  <p>If Trend Micro is asking about DDupe, choose to trust it. This window will carry on by itself as soon as DDupe answers again.</p>
+  <p>If DDupe was closed, close this window and open DDupe again, then scan the same folder. Files already in DUPES are safe and are skipped, so it picks up where it left off.</p>
+  <p class="muted" style="font-size:13px">Activity log: <span id="logPath"></span></p>
+</main>
+
+<!-- done -->
+<main id="vDone" class="done hidden">
+  <h2 id="doneTitle"></h2>
+  <p id="doneText"></p>
+  <div class="row">
+    <button class="btn primary" id="openDupes">Open DUPES folder</button>
+
+    <button class="btn" id="again">Scan another folder</button>
+  </div>
+  <p class="sheetnote hidden" id="sheetNote">A spreadsheet of everything that moved was saved to Documents\DDupe Reports, where it stays even after you delete DUPES. <button class="link" id="openSheet">View it</button></p>
+  <details class="hidden" id="failBox"><summary id="failSum"></summary><ul id="failList"></ul></details>
+</main>
+
+<!-- lightbox -->
+<div class="lb hidden" id="lb" role="dialog" aria-modal="true" aria-label="Photo viewer">
+  <div class="stage">
+    <img id="lbImg" alt="">
+    <div class="lens hidden" id="lens" aria-hidden="true"><span class="zl" id="lensZoom">100%</span></div>
+    <span class="tip" id="lbTip">Click the photo for a magnifying glass. Scroll to zoom in or out.</span>
+    <button class="nav prev" id="lbPrev" aria-label="Previous photo"><svg viewBox="0 0 24 24"><path d="M15 4 7 12l8 8" fill="none" stroke="#ddd" stroke-width="2"/></svg></button>
+    <button class="nav next" id="lbNext" aria-label="Next photo"><svg viewBox="0 0 24 24"><path d="m9 4 8 8-8 8" fill="none" stroke="#ddd" stroke-width="2"/></svg></button>
+  </div>
+  <aside>
+    <button class="btn quiet close" id="lbClose">Close</button>
+    <div>
+      <div class="muted" id="lbSet" style="font-size:13px;margin-bottom:4px"></div>
+      <h3 id="lbName"></h3>
+    </div>
+    <div class="toggle"><button id="lbKeep" aria-pressed="false">Keep</button><button class="mv" id="lbMove" aria-pressed="false">Move</button></div>
+    <dl id="lbInfo"></dl>
+    <button class="btn" id="lbReveal">Show in folder</button>
+    <div class="keys"><kbd>←</kbd> <kbd>→</kbd> photos in this set<br><kbd>Page Up</kbd> <kbd>Page Down</kbd> other sets<br><kbd>K</kbd> keep &nbsp; <kbd>M</kbd> move<br><kbd>Z</kbd> magnifying glass &nbsp; <kbd>Esc</kbd> close<br>The magnifier stays on the same spot as you switch photos, so you can compare detail and sharpness.</div>
+  </aside>
+  <div class="reel" id="lbReel"></div>
+</div>
+
+<dialog id="confirm">
+  <h2 id="cfTitle"></h2>
+  <p id="cfText"></p>
+  <p>Nothing is deleted, and you can drag files back at any time. A list of every move is saved in the DUPES folder.</p>
+  <div class="row"><button class="btn" id="cfCancel">Cancel</button><button class="btn primary" id="cfGo"></button></div>
+</dialog>
+
+<div class="toast hidden" id="toast" role="status"></div>
+
+<script>
+const T = new URLSearchParams(location.search).get('t') || '';
+const $ = s => document.querySelector(s);
+const fmtN = n => n.toLocaleString();
+function size(b){ if(b>=1099511627776) return (b/1099511627776).toFixed(2)+' TB'; if(b>=1073741824) return (b/1073741824).toFixed(1)+' GB'; if(b>=1048576) return (b/1048576).toFixed(1)+' MB'; return Math.round(b/1024)+' KB'; }
+async function api(path, body, timeoutMs){
+  const ctl = timeoutMs ? new AbortController() : null; let tm;
+  if(ctl) tm=setTimeout(()=>ctl.abort(), timeoutMs);
+  try{
+    const r = await fetch(path, body===undefined ? {headers:{'X-DDupe-Token':T}, signal:ctl?.signal} :
+      {method:'POST', headers:{'X-DDupe-Token':T,'Content-Type':'application/json'}, body:JSON.stringify(body), signal:ctl?.signal});
+    return await r.json();
+  } finally { clearTimeout(tm); }
+}
+let toastTimer;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.add('hidden'),2600); }
+
+// Keep the app alive while this window is open; DDupe closes when it closes.
+new EventSource('/api/alive?t='+T);
+
+const views = ['vWelcome','vWork','vResults','vDone','vLost'];
+function show(v){ views.forEach(id=>$('#'+id).classList.toggle('hidden', id!==v)); $('#newScan').classList.toggle('hidden', v==='vWelcome'||v==='vWork'||v==='vLost'); window.scrollTo(0,0); }
+
+/* ---------- welcome ---------- */
+async function loadRecent(){
+  const list = await api('/api/recent'); const box=$('#recent');
+  box.querySelectorAll('.chip').forEach(c=>c.remove());
+  list.forEach(p=>{ const b=document.createElement('button'); b.className='chip'; b.title=p; b.textContent='\u200E'+p; b.onclick=()=>{$('#path').value=p; $('#start').focus();}; box.appendChild(b); });
+  box.classList.toggle('hidden', !list.length);
+}
+$('#choose').onclick = async ()=>{ const r = await api('/api/pick',{}); if(r.path){ $('#path').value=r.path; $('#start').focus(); } };
+$('#path').addEventListener('keydown', e=>{ if(e.key==='Enter') startScan(); });
+$('#start').onclick = ()=>startScan();
+let lastLevel = 1;
+async function startScan(level){
+  const path=$('#path').value.trim(); const err=$('#welcomeErr');
+  if(!path){ err.textContent='Choose a folder first.'; err.classList.remove('hidden'); return; }
+  lastLevel = level ?? +document.querySelector('input[name=lvl]:checked').value;
+  const r = await api('/api/scan',{path, level:lastLevel});
+  if(r.error){ err.textContent=r.error; err.classList.remove('hidden'); show('vWelcome'); return; }
+  err.classList.add('hidden'); scanStarted=Date.now(); poll();
+}
+function goHome(){ api('/api/reset',{}).then(()=>{ loadRecent(); show('vWelcome'); $('#path').focus(); }); }
+$('#newScan').onclick=goHome; $('#again').onclick=goHome; $('#emptyNew').onclick=goHome;
+$('#tryLoose').onclick=()=>{ document.querySelector('input[name=lvl][value="2"]').checked=true; startScan(2); };
+
+/* ---------- progress ---------- */
+let scanStarted=0, pollTimer, phaseStart=0, lastPhase='';
+const phaseText={finding:'Looking for photos', reading:'Reading photos', comparing:'Comparing photos', moving:'Moving files', sheet:'Saving the spreadsheet'};
+function showLost(){
+  show('vLost');
+  $('#lostText').textContent = busyPhase==='moving'
+    ? 'DDupe stopped answering while it was moving files. This usually means security software such as Trend Micro paused or closed it.'
+    : 'DDupe stopped answering. This usually means security software such as Trend Micro paused or closed it.';
+}
+let lostSince=0, busyPhase='', movePending=false;
+async function poll(){
+  clearTimeout(pollTimer);
+  let s;
+  try { s = await api('/api/state', undefined, 4000); }
+  catch(e){
+    // DDupe isn't answering: it may be paused or closed by security software
+    if(!lostSince) lostSince=Date.now();
+    if(Date.now()-lostSince > 6000) showLost();
+    pollTimer=setTimeout(poll, 1500); return;
+  }
+  if(lostSince){ lostSince=0; $('#vLost').classList.add('hidden'); }
+  $('#logPath').textContent = s.log || '';
+  if(s.phase==='scanning'||s.phase==='moving') busyPhase=s.phase;
+  $('#ver').textContent = 'v'+s.version;
+  if(s.phase==='scanning' || s.phase==='moving'){
+    show('vWork');
+    const p=s.progress, moving=s.phase==='moving';
+    $('#workTitle').textContent = moving ? 'Moving to DUPES' : 'Scanning';
+    if(moving && p.phase==='sheet'){ $('#film').classList.add('indeterminate'); $('#workPhase').textContent='Saving the spreadsheet'; $('#workCount').textContent=''; $('#workEta').textContent=''; pollTimer=setTimeout(poll,350); return; }
+    $('#workWhere').textContent = s.root || $('#path').value;
+    $('#stop').classList.toggle('hidden', moving);
+    if(p.phase!==lastPhase){ lastPhase=p.phase; phaseStart=Date.now(); }
+    $('#workPhase').textContent = phaseText[p.phase] || 'Working';
+    const film=$('#film');
+    if(p.total>0){
+      film.classList.remove('indeterminate');
+      $('#fill').style.width = (100*p.done/p.total).toFixed(1)+'%';
+      $('#workCount').textContent = fmtN(p.done)+' of '+fmtN(p.total);
+      const el=(Date.now()-phaseStart)/1000;
+      if(p.phase==='reading' && p.done>20 && el>3){ const left=el*(p.total-p.done)/p.done; $('#workEta').textContent = left<60 ? 'Less than a minute left' : 'About '+Math.ceil(left/60)+' minutes left'; }
+      else if(p.phase!=='reading') $('#workEta').textContent='Almost done';
+    } else {
+      film.classList.add('indeterminate'); $('#workCount').textContent = p.done ? fmtN(p.done)+' found' : ''; $('#workEta').textContent='';
+    }
+    pollTimer=setTimeout(poll, 350);
+  } else if(s.phase==='results' && movePending){ pollTimer=setTimeout(poll, 400);
+  } else if(s.phase==='results'){ loadResults();
+  } else if(s.phase==='done'){ showDone(s.outcome);
+  } else {
+    show('vWelcome'); loadRecent();
+    if(s.error){ $('#welcomeErr').textContent=s.error; $('#welcomeErr').classList.remove('hidden'); }
+  }
+}
+$('#stop').onclick = ()=>api('/api/cancel',{});
+
+/* ---------- results ---------- */
+let R=null, keep=new Map(), filter='all', order='folder', view=[], rendered=0, byId=new Map();
+async function loadResults(){
+  R = await api('/api/results'); keep=new Map(); byId=new Map();
+  R.sets.forEach(s=>s.files.forEach((f,i)=>{ keep.set(f.id, i===0); byId.set(f.id,{s,f}); }));
+  $('#rFolder').textContent = R.root;
+  const nEx=R.sets.filter(s=>s.kind==='exact').length;
+  $('#nAll').textContent=fmtN(R.sets.length); $('#nExact').textContent=fmtN(nEx); $('#nSimilar').textContent=fmtN(R.sets.length-nEx);
+  let sum = `${fmtN(R.scanned)} photos checked at ${R.level} matching.` + (R.sets.length ? ` ${fmtN(R.sets.length)} ${R.sets.length===1?'set':'sets'} of duplicates found.` : '');
+  if(R.unreadable) sum += ` ${fmtN(R.unreadable)} ${R.unreadable===1?'file':'files'} couldn't be read and ${R.unreadable===1?'was':'were'} skipped.`;
+  $('#rSummary').textContent = sum;
+  const none = !R.sets.length;
+  ['.tabs','#hint','#sets','#actionbar'].forEach(q=>$(q).classList.toggle('hidden',none));
+  $('#emptyState').classList.toggle('hidden',!none);
+  if(none){
+    $('#emptyText').textContent = `DDupe checked ${fmtN(R.scanned)} photos at ${R.level} matching.` + (R.level!=='Loose' ? ' Loose matching also catches heavier crops and near-identical frames.' : '');
+    $('#tryLoose').classList.toggle('hidden', R.level==='Loose');
+  }
+  show('vResults'); buildView(); updateBar();
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected', x===t)); filter=t.dataset.f; buildView();
+});
+$('#sort').onchange=e=>{ order=e.target.value; buildView(); };
+function setSpace(s){ return s.files.reduce((a,f)=>a+(keep.get(f.id)?0:f.size),0); }
+function buildView(){
+  view = R.sets.filter(s=>filter==='all'||s.kind===filter);
+  if(order==='space') view.sort((a,b)=>setSpace(b)-setSpace(a));
+  else if(order==='count') view.sort((a,b)=>b.files.length-a.files.length);
+  else view.sort((a,b)=>a.id-b.id);
+  $('#sets').innerHTML=''; rendered=0; renderMore();
+}
+// hand-drawn grease-pencil loop, as normalised points scaled to the frame size
+const LOOP=[['M',9,5],['C',32,2,68,2,95,5],['C',99,30,98,70,96,95],['C',70,99,30,98,5,96],['C',1,70,2,32,5,8],['C',14,3,24,2,36,3]];
+function loopSVG(w,h){
+  const W=w+19, H=168+19;
+  const d=LOOP.map(([c,...n])=>c+' '+n.map((v,i)=>(i%2?v*H:v*W)/100).map(v=>v.toFixed(1)).join(' ')).join(' ');
+  return `<svg class="loop" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" pathLength="1"/></svg>`;
+}
+function frameW(f){ return Math.round(Math.max(96, Math.min(300, 168*f.w/Math.max(1,f.h)))) || 200; }
+function frameHTML(s,f,i){
+  const k=keep.get(f.id);
+  let note='';
+  if(s.kind==='similar' && i>0) note = f.same ? 'exact copy' : f.sim+'% match';
+  return `<div class="frame ${k?'keep':'move'}" data-id="${f.id}" style="--w:${frameW(f)}px">
+    <button class="shot" aria-pressed="${k}" aria-label="${esc(f.name)}, ${k?'keep':'move'}. Click to switch.">
+      <img loading="lazy" src="/thumb/${f.id}?t=${T}" alt="">
+      ${loopSVG(frameW(f))}
+      <svg class="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5 Q 12 12.5, 19 19 M19 5 Q 12 11, 5.5 19"/></svg>
+    </button>
+    <button class="loupe" aria-label="View ${esc(f.name)} full size"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="#eee" stroke-width="2"/><path d="m15 15 5 5" stroke="#eee" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+    <div class="cap">
+      <div class="state">${k?'Keep':'Move'}${note?` <span class="m">${note}</span>`:''}</div>
+      <div class="fn" title="${esc(f.name)}">${esc(f.name)}</div>
+      <div class="meta num"><span>${f.w}×${f.h}</span><span>${size(f.size)}</span><span>${f.date}</span></div>
+      ${f.folder?`<div class="dir" title="${esc(f.folder)}">${esc(f.folder)}</div>`:''}
+    </div></div>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function stripHTML(s){
+  return `<section class="strip" data-set="${s.id}">
+    <div class="edge" aria-hidden="true"><span class="no">${s.id}</span><span class="kind">${s.kind==='exact'?'Exact':'Look-alike'}</span></div>
+    <div class="bar"><span class="t"><span class="sr">Set ${s.id}: </span>${s.kind==='exact'?'Exact copies':'Look-alikes'}</span><span class="s">${s.files.length} photos</span><span class="spacer"></span>
+      <button class="btn quiet keepall">Keep all</button></div>
+    <div class="frames">${s.files.map((f,i)=>frameHTML(s,f,i)).join('')}</div></section>`;
+}
+const io = new IntersectionObserver(es=>{ if(es.some(e=>e.isIntersecting)) renderMore(); },{rootMargin:'1200px'});
+function renderMore(){
+  const box=$('#sets'); box.querySelector('.more')?.remove();
+  const next=view.slice(rendered, rendered+25); rendered+=next.length;
+  box.insertAdjacentHTML('beforeend', next.map(stripHTML).join(''));
+  if(rendered<view.length){ const m=document.createElement('div'); m.className='more'; box.appendChild(m); io.observe(m); }
+}
+function setKeep(id, val, animate){
+  const {s} = byId.get(id);
+  if(!val && s.files.filter(f=>keep.get(f.id) && f.id!==id).length===0){ toast('Each set keeps at least one photo.'); return false; }
+  keep.set(id,val);
+  const el=document.querySelector(`.frame[data-id="${id}"]`);
+  if(el){
+    const i=s.files.findIndex(f=>f.id===id);
+    const tmp=document.createElement('div'); tmp.innerHTML=frameHTML(s,s.files[i],i); const nu=tmp.firstElementChild;
+    if(animate && val) nu.classList.add('drawn');
+    el.replaceWith(nu);
+  }
+  updateBar(); return true;
+}
+$('#sets').addEventListener('click', e=>{
+  const fr=e.target.closest('.frame');
+  if(fr){
+    const id=+fr.dataset.id;
+    if(e.target.closest('.loupe')) return openLB(id);
+    if(e.target.closest('.shot')){ setKeep(id, !keep.get(id), true); document.querySelector(`.frame[data-id="${id}"] .shot`)?.focus(); }
+    return;
+  }
+  const ka=e.target.closest('.keepall');
+  if(ka){ const s=R.sets.find(x=>x.id==ka.closest('.strip').dataset.set); s.files.forEach(f=>{ if(!keep.get(f.id)) setKeep(f.id,true,true); }); }
+});
+function moving(){ const ids=[]; let bytes=0; keep.forEach((k,id)=>{ if(!k){ ids.push(id); bytes+=byId.get(id).f.size; } }); return {ids,bytes}; }
+function updateBar(){
+  const {ids,bytes}=moving();
+  $('#barMsg').innerHTML = ids.length ? `<b>${fmtN(ids.length)}</b> ${ids.length===1?'file':'files'} will move to DUPES, freeing <b>${size(bytes)}</b> once you delete it.` : 'Every photo is marked to keep. Click a photo to mark it to move.';
+  $('#moveBtn').textContent = ids.length ? `Move ${fmtN(ids.length)} ${ids.length===1?'file':'files'}` : 'Move files';
+  $('#moveBtn').disabled = !ids.length;
+}
+$('#report').onclick = async ()=>{ const r=await api('/api/report',{ids:moving().ids}); toast(r.error || 'Report saved to Documents\\DDupe Reports and opened.'); };
+$('#moveBtn').onclick = ()=>{
+  const {ids,bytes}=moving(); const n=fmtN(ids.length)+' '+(ids.length===1?'file':'files');
+  $('#cfTitle').textContent = `Move ${n} to DUPES?`;
+  $('#cfText').textContent = `They'll go into ${R.root.replace(/[\\/]$/,'')}${R.root.includes('/')?'/':'\\'}DUPES (${size(bytes)}), keeping their subfolders.`;
+  $('#cfGo').textContent = `Move ${n}`;
+  $('#confirm').showModal();
+};
+$('#cfCancel').onclick=()=>$('#confirm').close();
+$('#cfGo').onclick=async ()=>{
+  $('#confirm').close();
+  busyPhase='moving'; show('vWork'); $('#workTitle').textContent='Moving to DUPES'; $('#stop').classList.add('hidden');
+  // Don't wait on this request: if security software pauses DDupe, the
+  // status checks below notice and explain, instead of the window freezing.
+  movePending=true;
+  api('/api/move',{ids:moving().ids})
+    .then(r=>{ movePending=false; if(r.error){ clearTimeout(pollTimer); toast(r.error); show('vResults'); } })
+    .catch(()=>{ movePending=false; });
+  lastPhase=''; pollTimer=setTimeout(poll, 400);
+};
+
+/* ---------- done ---------- */
+function showDone(o){
+  show('vDone');
+  $('#doneTitle').textContent = `${fmtN(o.moved)} ${o.moved===1?'file':'files'} moved to DUPES`;
+  $('#doneText').textContent = `That's ${size(o.bytes)}. Nothing was deleted. Once you've looked through the DUPES folder, delete it to free up the space.`;
+  $('#sheetNote').classList.toggle('hidden', !o.sheet);
+  const fb=$('#failBox'), failed=o.failed||[];
+  fb.classList.toggle('hidden', !failed.length);
+  if(failed.length){
+    $('#failSum').textContent = `${fmtN(failed.length)} ${failed.length===1?'file':'files'} couldn't be moved. They may be open in another program or read-only.`;
+    $('#failList').innerHTML = failed.map(p=>`<li>${esc(p)}</li>`).join('');
+  }
+}
+$('#openDupes').onclick=()=>api('/api/open',{what:'dupes'});
+$('#openSheet').onclick=()=>api('/api/open',{what:'sheet'});
+$('#pastReports').onclick=()=>api('/api/open',{what:'reports'});
+
+/* ---------- lightbox ---------- */
+let lbSet=null, lbIdx=0;
+function openLB(id){ const {s}=byId.get(id); lbSet=s; lbIdx=s.files.findIndex(f=>f.id===id); $('#lb').classList.remove('hidden'); document.body.style.overflow='hidden'; drawLB(); $('#lbClose').focus(); }
+function closeLB(){ lens.on=false; placeLens(); $('#lb').classList.add('hidden'); document.body.style.overflow=''; const el=document.querySelector(`.frame[data-id="${lbSet.files[lbIdx].id}"] .loupe`); el?.focus(); }
+function drawLB(){
+  const f=lbSet.files[lbIdx], k=keep.get(f.id);
+  $('#lbImg').src=`/img/${f.id}?t=${T}`;
+  $('#lbSet').textContent=`Set ${lbSet.id}, photo ${lbIdx+1} of ${lbSet.files.length}`;
+  $('#lbName').textContent=f.name;
+  $('#lbKeep').setAttribute('aria-pressed',k); $('#lbMove').setAttribute('aria-pressed',!k);
+  const rows=[['Size',`${f.w} × ${f.h} pixels`],['File size',size(f.size)],['Modified',f.date],['Folder',f.folder||'Top folder']];
+  if(lbSet.kind==='similar' && lbIdx>0) rows.unshift(['Match', f.same?'Exact copy of the main photo':f.sim+'% match to the main photo']);
+  $('#lbInfo').innerHTML=rows.map(([a,b])=>`<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
+  $('#lbReel').innerHTML=lbSet.files.map((g,i)=>`<button class="${i===lbIdx?'cur':''} ${keep.get(g.id)?'':'move'}" data-i="${i}" aria-label="${esc(g.name)}"><img src="/thumb/${g.id}?t=${T}" alt=""></button>`).join('');
+  $('#lbReel .cur')?.scrollIntoView({inline:'center',block:'nearest'});
+  $('#lbPrev').disabled = lbIdx===0; $('#lbNext').disabled = lbIdx===lbSet.files.length-1;
+}
+/* magnifying glass */
+const ZOOMS=[1,2,3]; let lens={on:false, fx:.5, fy:.5, zi:0};
+function placeLens(){
+  const img=$('#lbImg'), L=$('#lens');
+  $('#lb').classList.toggle('loupe-on', lens.on);
+  if(!lens.on || !img.naturalWidth){ L.classList.add('hidden'); return; }
+  const ir=img.getBoundingClientRect(), sr=img.parentElement.getBoundingClientRect();
+  const shown=ir.width/img.naturalWidth;           // how much the photo is shrunk on screen
+  const z=Math.max(ZOOMS[lens.zi], shown*2);       // never less than 2x what's on screen
+  const bw=img.naturalWidth*z, bh=img.naturalHeight*z, D=280;
+  L.style.left=(ir.left-sr.left+lens.fx*ir.width)+'px';
+  L.style.top=(ir.top-sr.top+lens.fy*ir.height)+'px';
+  L.style.backgroundImage=`url("${img.src}")`;
+  L.style.backgroundSize=`${bw}px ${bh}px`;
+  L.style.backgroundPosition=`${D/2-lens.fx*bw}px ${D/2-lens.fy*bh}px`;
+  $('#lensZoom').textContent=Math.round(z*100)+'%';
+  L.classList.remove('hidden');
+}
+function lensFromEvent(e){
+  const r=$('#lbImg').getBoundingClientRect();
+  lens.fx=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
+  lens.fy=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+}
+$('#lbImg').addEventListener('click',e=>{ lens.on=!lens.on; lensFromEvent(e); placeLens(); $('#lbTip').classList.add('hidden'); });
+$('#lbImg').addEventListener('pointermove',e=>{ if(lens.on){ lensFromEvent(e); placeLens(); } });
+$('#lbImg').addEventListener('load',placeLens);
+window.addEventListener('resize',()=>{ if(!$('#lb').classList.contains('hidden')) placeLens(); });
+document.querySelector('#lb .stage').addEventListener('wheel',e=>{
+  if(!lens.on) return; e.preventDefault();
+  lens.zi=Math.min(ZOOMS.length-1,Math.max(0,lens.zi+(e.deltaY<0?1:-1))); placeLens();
+},{passive:false});
+function lbStep(d){ const n=lbIdx+d; if(n>=0&&n<lbSet.files.length){ lbIdx=n; drawLB(); } }
+function lbSetStep(d){ const i=view.indexOf(lbSet)+d; if(i>=0&&i<view.length){ lbSet=view[i]; lbIdx=0; drawLB(); } }
+$('#lbPrev').onclick=()=>lbStep(-1); $('#lbNext').onclick=()=>lbStep(1); $('#lbClose').onclick=closeLB;
+$('#lbReel').onclick=e=>{ const b=e.target.closest('button'); if(b){ lbIdx=+b.dataset.i; drawLB(); } };
+$('#lbKeep').onclick=()=>{ setKeep(lbSet.files[lbIdx].id,true,true); drawLB(); };
+$('#lbMove').onclick=()=>{ setKeep(lbSet.files[lbIdx].id,false); drawLB(); };
+$('#lbReveal').onclick=()=>api('/api/open',{what:'reveal',id:lbSet.files[lbIdx].id});
+document.addEventListener('keydown',e=>{
+  if($('#lb').classList.contains('hidden')) return;
+  const k=e.key.toLowerCase();
+  if(k==='escape'){ if(lens.on){ lens.on=false; placeLens(); } else closeLB(); }
+  else if(k==='z'){ lens.on=!lens.on; placeLens(); }
+  else if(k==='arrowleft') lbStep(-1);
+  else if(k==='arrowright') lbStep(1);
+  else if(k==='pageup') lbSetStep(-1);
+  else if(k==='pagedown') lbSetStep(1);
+  else if(k==='k'){ $('#lbKeep').click(); }
+  else if(k==='m'){ $('#lbMove').click(); }
+  else return;
+  e.preventDefault();
+});
+
+poll();
+</script>
+</body>
+</html>
