@@ -1,5 +1,8 @@
 # DDupe version history
 
+## 2.4.1
+- Fixed: after starting a **New scan**, some previews could show photos from the previous scan, mixing the two folders up. Each scan's previews now have their own addresses, and a preview from an earlier scan is never shown. (The files themselves and the moves were always correct.)
+
 ## 2.4
 - **Face checks in look-alike sets:** flags **eyes closed** and **soft focus**, marks the frame with the **sharpest faces**, and keeps the eyes-open, sharpest frame when the usual keeper has a blink or soft faces. Runs entirely on your computer using the open-source pigo face finder.
 - **Show faces found** in the full-size viewer (or press **F**) draws each face and eye DDupe found.

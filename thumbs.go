@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -23,7 +24,7 @@ var (
 )
 
 func thumbnail(ph *photo) ([]byte, error) {
-	key := ph.Path
+	key := fmt.Sprintf("%s|%d|%d", ph.Path, ph.Size, ph.ModTime.UnixNano())
 	thumbMu.Lock()
 	if b, ok := thumbCache[key]; ok {
 		thumbMu.Unlock()
