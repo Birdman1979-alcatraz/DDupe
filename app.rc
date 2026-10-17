@@ -2,8 +2,8 @@
 #define RT_MANIFEST 24
 1 RT_MANIFEST "app.manifest"
 1 VERSIONINFO
-FILEVERSION 2,3,0,0
-PRODUCTVERSION 2,3,0,0
+FILEVERSION 2,4,0,0
+PRODUCTVERSION 2,4,0,0
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -13,12 +13,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Birdman"
       VALUE "FileDescription", "DDupe - finds duplicate and look-alike JPEG photos"
-      VALUE "FileVersion", "2.3.0.0"
+      VALUE "FileVersion", "2.4.0.0"
       VALUE "InternalName", "DDupe"
       VALUE "LegalCopyright", "Copyright (C) 2026 Birdman"
       VALUE "OriginalFilename", "DDupe.exe"
       VALUE "ProductName", "DDupe"
-      VALUE "ProductVersion", "2.3.0.0"
+      VALUE "ProductVersion", "2.4.0.0"
       VALUE "Comments", "Reads JPEG photos, reports duplicates, and optionally moves extra copies to a DUPES folder. Never modifies or deletes photos."
     END
   END

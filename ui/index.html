@@ -66,8 +66,12 @@ legend{font:600 15px var(--ui);margin-bottom:10px;padding:0}
 .level b{font-weight:600}
 .level span{color:var(--muted)}
 .level:has(input:checked){background:#424242}
+.facecheck{display:grid;grid-template-columns:22px 1fr;gap:8px;margin-top:18px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);cursor:pointer}
+.facecheck input{accent-color:var(--pencil);margin:3px 0 0}
+.facecheck b{display:block;font-weight:600}
+.facecheck span{color:var(--muted)}.facecheck b{color:var(--ink)}
 .go{margin-top:28px;display:flex;align-items:center;gap:16px}
-.go .btn{padding:12px 24px;font-size:15px}
+.go .btn{padding:12px 24px;font-size:15px;white-space:nowrap}
 .err{color:#ff9b7a;margin:12px 0 0}
 
 /* ---------- progress strip (film with sprocket holes) ---------- */
@@ -112,6 +116,7 @@ legend{font:600 15px var(--ui);margin-bottom:10px;padding:0}
 .strip .bar .t{font-weight:600}
 .strip .bar .s{color:var(--muted);font-size:13px}
 .strip .bar .spacer{flex:1}
+.strip .bar .pick{color:#cfe8d4}
 .strip .bar .btn{padding:3px 10px;font-size:12.5px}
 .frames{display:flex;flex-wrap:wrap;gap:22px 26px}
 
@@ -135,6 +140,10 @@ legend{font:600 15px var(--ui);margin-bottom:10px;padding:0}
 .frame.keep .cap .state{color:var(--ink)}
 .frame.move .cap .state{color:var(--pencil)}
 .cap .state .m{font-weight:400;color:var(--muted)}
+.fbs{display:flex;flex-wrap:wrap;gap:4px;margin:3px 0 2px}
+.fb{font-size:11.5px;line-height:1.5;padding:0 7px;border-radius:99px;border:1px solid}
+.fb.warn{color:#ffb199;border-color:#7a3a26;background:#3a221b}
+.fb.good{color:#cfe8d4;border-color:#3d5c45;background:#1f2b22}
 .cap .fn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cap .meta{color:var(--faint);display:flex;flex-wrap:wrap;column-gap:10px}
 .cap .dir{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -174,6 +183,11 @@ legend{font:600 15px var(--ui);margin-bottom:10px;padding:0}
 .lb .toggle button{border:0;background:none;padding:10px;cursor:pointer;color:var(--muted)}
 .lb .toggle button[aria-pressed=true]{background:#3a3a3a;color:var(--ink);font-weight:600}
 .lb .toggle button.mv[aria-pressed=true]{color:var(--pencil)}
+.showfaces{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;cursor:pointer}
+.showfaces input{accent-color:var(--pencil)}
+.facebox{position:absolute;border:2px solid #7fd49a;border-radius:6px;pointer-events:none;z-index:4}
+.facebox.blink{border-color:var(--pencil)}
+.eyedot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#7fd49a;pointer-events:none;z-index:4}
 .lb .keys{color:var(--faint);font-size:12px;line-height:1.7;margin-top:auto}
 .lb .keys kbd{font:11px var(--ui);border:1px solid var(--line);border-radius:3px;padding:0 5px;color:var(--muted)}
 .lb .reel{grid-column:1;display:flex;gap:10px;padding:12px 16px;overflow-x:auto;background:#1a1a1a;align-items:center}
@@ -236,9 +250,11 @@ dialog .row{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
       <label class="level"><input type="radio" name="lvl" value="2"><b>Loose</b><span>Also heavier crops and near-identical frames from the same moment. Check these by eye.</span></label>
     </div>
   </fieldset>
+  <label class="facecheck"><input type="checkbox" id="faces" checked>
+    <span><b>Check faces in look-alikes</b>Flags blinks and soft focus, and keeps the frame where eyes are open and faces are sharpest.</span></label>
   <div class="go">
     <button class="btn primary" id="start">Scan for duplicates</button>
-    <span class="muted" id="startNote">Subfolders are included. The DUPES folder is skipped.</span>
+    <span class="muted" id="startNote">Subfolders are included. Windows system folders and DUPES are skipped. You can pick a whole drive.</span>
   </div>
   <p class="err hidden" id="welcomeErr" role="alert"></p>
 </main>
@@ -325,7 +341,8 @@ dialog .row{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
     <div class="toggle"><button id="lbKeep" aria-pressed="false">Keep</button><button class="mv" id="lbMove" aria-pressed="false">Move</button></div>
     <dl id="lbInfo"></dl>
     <button class="btn" id="lbReveal">Show in folder</button>
-    <div class="keys"><kbd>←</kbd> <kbd>→</kbd> photos in this set<br><kbd>Page Up</kbd> <kbd>Page Down</kbd> other sets<br><kbd>K</kbd> keep &nbsp; <kbd>M</kbd> move<br><kbd>Z</kbd> magnifying glass &nbsp; <kbd>Esc</kbd> close<br>The magnifier stays on the same spot as you switch photos, so you can compare detail and sharpness.</div>
+    <label class="showfaces"><input type="checkbox" id="lbFaces"> Show faces found</label>
+    <div class="keys"><kbd>←</kbd> <kbd>→</kbd> photos in this set<br><kbd>Page Up</kbd> <kbd>Page Down</kbd> other sets<br><kbd>K</kbd> keep &nbsp; <kbd>M</kbd> move<br><kbd>Z</kbd> magnifying glass &nbsp; <kbd>F</kbd> show faces &nbsp; <kbd>Esc</kbd> close<br>The magnifier stays on the same spot as you switch photos, so you can compare detail and sharpness.</div>
   </aside>
   <div class="reel" id="lbReel"></div>
 </div>
@@ -377,7 +394,7 @@ async function startScan(level){
   const path=$('#path').value.trim(); const err=$('#welcomeErr');
   if(!path){ err.textContent='Choose a folder first.'; err.classList.remove('hidden'); return; }
   lastLevel = level ?? +document.querySelector('input[name=lvl]:checked').value;
-  const r = await api('/api/scan',{path, level:lastLevel});
+  const r = await api('/api/scan',{path, level:lastLevel, faces:$('#faces').checked});
   if(r.error){ err.textContent=r.error; err.classList.remove('hidden'); show('vWelcome'); return; }
   err.classList.add('hidden'); scanStarted=Date.now(); poll();
 }
@@ -387,7 +404,7 @@ $('#tryLoose').onclick=()=>{ document.querySelector('input[name=lvl][value="2"]'
 
 /* ---------- progress ---------- */
 let scanStarted=0, pollTimer, phaseStart=0, lastPhase='';
-const phaseText={finding:'Looking for photos', reading:'Reading photos', comparing:'Comparing photos', moving:'Moving files', sheet:'Saving the spreadsheet'};
+const phaseText={finding:'Looking for photos', reading:'Reading photos', comparing:'Comparing photos', moving:'Moving files', sheet:'Saving the spreadsheet', faces:'Checking faces for blinks and focus'};
 function showLost(){
   show('vLost');
   $('#lostText').textContent = busyPhase==='moving'
@@ -448,7 +465,7 @@ async function loadResults(){
   $('#rFolder').textContent = R.root;
   const nEx=R.sets.filter(s=>s.kind==='exact').length;
   $('#nAll').textContent=fmtN(R.sets.length); $('#nExact').textContent=fmtN(nEx); $('#nSimilar').textContent=fmtN(R.sets.length-nEx);
-  let sum = `${fmtN(R.scanned)} photos checked at ${R.level} matching.` + (R.sets.length ? ` ${fmtN(R.sets.length)} ${R.sets.length===1?'set':'sets'} of duplicates found.` : '');
+  let sum = `${fmtN(R.scanned)} photos checked at ${R.level} matching` + (R.remembered ? ` (${fmtN(R.remembered)} remembered from earlier scans)` : '') + '.' + (R.sets.length ? ` ${fmtN(R.sets.length)} ${R.sets.length===1?'set':'sets'} of duplicates found.` : '');
   if(R.unreadable) sum += ` ${fmtN(R.unreadable)} ${R.unreadable===1?'file':'files'} couldn't be read and ${R.unreadable===1?'was':'were'} skipped.`;
   $('#rSummary').textContent = sum;
   const none = !R.sets.length;
@@ -493,16 +510,24 @@ function frameHTML(s,f,i){
     <button class="loupe" aria-label="View ${esc(f.name)} full size"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="#eee" stroke-width="2"/><path d="m15 15 5 5" stroke="#eee" stroke-width="2.2" stroke-linecap="round"/></svg></button>
     <div class="cap">
       <div class="state">${k?'Keep':'Move'}${note?` <span class="m">${note}</span>`:''}</div>
+      ${faceBadges(f)}
       <div class="fn" title="${esc(f.name)}">${esc(f.name)}</div>
       <div class="meta num"><span>${f.w}×${f.h}</span><span>${size(f.size)}</span><span>${f.date}</span></div>
       ${f.folder?`<div class="dir" title="${esc(f.folder)}">${esc(f.folder)}</div>`:''}
     </div></div>`;
 }
+function faceBadges(f){
+  const b=[];
+  if(f.blinks) b.push(`<span class="fb warn">${f.blinks>1?f.blinks+' people blinking':'Eyes closed'}</span>`);
+  if(f.soft) b.push('<span class="fb warn">Soft focus</span>');
+  if(f.sharpest) b.push('<span class="fb good">Sharpest faces</span>');
+  return b.length?`<div class="fbs">${b.join('')}</div>`:'';
+}
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function stripHTML(s){
   return `<section class="strip" data-set="${s.id}">
     <div class="edge" aria-hidden="true"><span class="no">${s.id}</span><span class="kind">${s.kind==='exact'?'Exact':'Look-alike'}</span></div>
-    <div class="bar"><span class="t"><span class="sr">Set ${s.id}: </span>${s.kind==='exact'?'Exact copies':'Look-alikes'}</span><span class="s">${s.files.length} photos</span><span class="spacer"></span>
+    <div class="bar"><span class="t"><span class="sr">Set ${s.id}: </span>${s.kind==='exact'?'Exact copies':'Look-alikes'}</span><span class="s">${s.files.length} photos</span>${s.facePick?'<span class="s pick">Keeper chosen for open eyes and sharp faces</span>':''}<span class="spacer"></span>
       <button class="btn quiet keepall">Keep all</button></div>
     <div class="frames">${s.files.map((f,i)=>frameHTML(s,f,i)).join('')}</div></section>`;
 }
@@ -585,7 +610,7 @@ $('#pastReports').onclick=()=>api('/api/open',{what:'reports'});
 /* ---------- lightbox ---------- */
 let lbSet=null, lbIdx=0;
 function openLB(id){ const {s}=byId.get(id); lbSet=s; lbIdx=s.files.findIndex(f=>f.id===id); $('#lb').classList.remove('hidden'); document.body.style.overflow='hidden'; drawLB(); $('#lbClose').focus(); }
-function closeLB(){ lens.on=false; placeLens(); $('#lb').classList.add('hidden'); document.body.style.overflow=''; const el=document.querySelector(`.frame[data-id="${lbSet.files[lbIdx].id}"] .loupe`); el?.focus(); }
+function closeLB(){ lens.on=false; placeLens(); document.querySelectorAll('.facebox,.eyedot').forEach(e=>e.remove()); $('#lb').classList.add('hidden'); document.body.style.overflow=''; const el=document.querySelector(`.frame[data-id="${lbSet.files[lbIdx].id}"] .loupe`); el?.focus(); }
 function drawLB(){
   const f=lbSet.files[lbIdx], k=keep.get(f.id);
   $('#lbImg').src=`/img/${f.id}?t=${T}`;
@@ -593,6 +618,10 @@ function drawLB(){
   $('#lbName').textContent=f.name;
   $('#lbKeep').setAttribute('aria-pressed',k); $('#lbMove').setAttribute('aria-pressed',!k);
   const rows=[['Size',`${f.w} × ${f.h} pixels`],['File size',size(f.size)],['Modified',f.date],['Folder',f.folder||'Top folder']];
+  if(R.faces && lbSet.kind==='similar'){
+    const notes=[]; if(f.blinks) notes.push(f.blinks>1?f.blinks+' people blinking':'eyes closed'); if(f.soft) notes.push('soft focus'); if(f.sharpest) notes.push('sharpest faces in this set');
+    rows.unshift(['Faces', (f.faces?.length? f.faces.length+(f.faces.length===1?' face':' faces') : 'No faces found') + (notes.length?', '+notes.join(', '):'')]);
+  }
   if(lbSet.kind==='similar' && lbIdx>0) rows.unshift(['Match', f.same?'Exact copy of the main photo':f.sim+'% match to the main photo']);
   $('#lbInfo').innerHTML=rows.map(([a,b])=>`<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
   $('#lbReel').innerHTML=lbSet.files.map((g,i)=>`<button class="${i===lbIdx?'cur':''} ${keep.get(g.id)?'':'move'}" data-i="${i}" aria-label="${esc(g.name)}"><img src="/thumb/${g.id}?t=${T}" alt=""></button>`).join('');
@@ -624,8 +653,22 @@ function lensFromEvent(e){
 }
 $('#lbImg').addEventListener('click',e=>{ lens.on=!lens.on; lensFromEvent(e); placeLens(); $('#lbTip').classList.add('hidden'); });
 $('#lbImg').addEventListener('pointermove',e=>{ if(lens.on){ lensFromEvent(e); placeLens(); } });
-$('#lbImg').addEventListener('load',placeLens);
-window.addEventListener('resize',()=>{ if(!$('#lb').classList.contains('hidden')) placeLens(); });
+$('#lbImg').addEventListener('load',()=>{ placeLens(); drawFaces(); });
+$('#lbFaces').addEventListener('change',drawFaces);
+function drawFaces(){
+  document.querySelectorAll('.facebox,.eyedot').forEach(e=>e.remove());
+  if(!$('#lbFaces').checked || !lbSet) return;
+  const f=lbSet.files[lbIdx], img=$('#lbImg');
+  if(!f.faces || !img.naturalWidth) return;
+  const ir=img.getBoundingClientRect(), sr=img.parentElement.getBoundingClientRect(), W=ir.width, ox=ir.left-sr.left, oy=ir.top-sr.top;
+  for(const fc of f.faces){
+    const b=document.createElement('div'); b.className='facebox'+(f.blinks?' blink':'');
+    const s=fc.S*W; b.style.cssText=`left:${ox+fc.X*W-s/2}px;top:${oy+fc.Y*W-s/2}px;width:${s}px;height:${s}px`;
+    img.parentElement.appendChild(b);
+    for(const k of [0,2]){ const d=document.createElement('div'); d.className='eyedot'; d.style.left=(ox+fc.Eyes[k]*W)+'px'; d.style.top=(oy+fc.Eyes[k+1]*W)+'px'; img.parentElement.appendChild(d); }
+  }
+}
+window.addEventListener('resize',()=>{ if(!$('#lb').classList.contains('hidden')){ placeLens(); drawFaces(); } });
 document.querySelector('#lb .stage').addEventListener('wheel',e=>{
   if(!lens.on) return; e.preventDefault();
   lens.zi=Math.min(ZOOMS.length-1,Math.max(0,lens.zi+(e.deltaY<0?1:-1))); placeLens();
@@ -642,6 +685,7 @@ document.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(k==='escape'){ if(lens.on){ lens.on=false; placeLens(); } else closeLB(); }
   else if(k==='z'){ lens.on=!lens.on; placeLens(); }
+  else if(k==='f'){ $('#lbFaces').checked=!$('#lbFaces').checked; drawFaces(); }
   else if(k==='arrowleft') lbStep(-1);
   else if(k==='arrowright') lbStep(1);
   else if(k==='pageup') lbSetStep(-1);
