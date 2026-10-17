@@ -503,7 +503,7 @@ function frameHTML(s,f,i){
   if(s.kind==='similar' && i>0) note = f.same ? 'exact copy' : f.sim+'% match';
   return `<div class="frame ${k?'keep':'move'}" data-id="${f.id}" style="--w:${frameW(f)}px">
     <button class="shot" aria-pressed="${k}" aria-label="${esc(f.name)}, ${k?'keep':'move'}. Click to switch.">
-      <img loading="lazy" src="/thumb/${f.id}?t=${T}" alt="">
+      <img loading="lazy" src="/thumb/${f.id}?t=${T}&g=${R.gen}" alt="">
       ${loopSVG(frameW(f))}
       <svg class="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5 Q 12 12.5, 19 19 M19 5 Q 12 11, 5.5 19"/></svg>
     </button>
@@ -613,7 +613,7 @@ function openLB(id){ const {s}=byId.get(id); lbSet=s; lbIdx=s.files.findIndex(f=
 function closeLB(){ lens.on=false; placeLens(); document.querySelectorAll('.facebox,.eyedot').forEach(e=>e.remove()); $('#lb').classList.add('hidden'); document.body.style.overflow=''; const el=document.querySelector(`.frame[data-id="${lbSet.files[lbIdx].id}"] .loupe`); el?.focus(); }
 function drawLB(){
   const f=lbSet.files[lbIdx], k=keep.get(f.id);
-  $('#lbImg').src=`/img/${f.id}?t=${T}`;
+  $('#lbImg').src=`/img/${f.id}?t=${T}&g=${R.gen}`;
   $('#lbSet').textContent=`Set ${lbSet.id}, photo ${lbIdx+1} of ${lbSet.files.length}`;
   $('#lbName').textContent=f.name;
   $('#lbKeep').setAttribute('aria-pressed',k); $('#lbMove').setAttribute('aria-pressed',!k);
@@ -624,7 +624,7 @@ function drawLB(){
   }
   if(lbSet.kind==='similar' && lbIdx>0) rows.unshift(['Match', f.same?'Exact copy of the main photo':f.sim+'% match to the main photo']);
   $('#lbInfo').innerHTML=rows.map(([a,b])=>`<dt>${a}</dt><dd>${esc(b)}</dd>`).join('');
-  $('#lbReel').innerHTML=lbSet.files.map((g,i)=>`<button class="${i===lbIdx?'cur':''} ${keep.get(g.id)?'':'move'}" data-i="${i}" aria-label="${esc(g.name)}"><img src="/thumb/${g.id}?t=${T}" alt=""></button>`).join('');
+  $('#lbReel').innerHTML=lbSet.files.map((g,i)=>`<button class="${i===lbIdx?'cur':''} ${keep.get(g.id)?'':'move'}" data-i="${i}" aria-label="${esc(g.name)}"><img src="/thumb/${g.id}?t=${T}&g=${R.gen}" alt=""></button>`).join('');
   $('#lbReel .cur')?.scrollIntoView({inline:'center',block:'nearest'});
   $('#lbPrev').disabled = lbIdx===0; $('#lbNext').disabled = lbIdx===lbSet.files.length-1;
 }

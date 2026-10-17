@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-const version = "2.4"
+const version = "2.4.1"
 
 //go:embed ui
 var uiFiles embed.FS
@@ -43,6 +43,7 @@ type app struct {
 	cancel   context.CancelFunc
 	outcome  *moveOutcome
 	busyMove atomic.Bool
+	gen      int // counts scans, so previews from an earlier scan are never reused
 
 	conns    atomic.Int64
 	lastSeen atomic.Int64 // unix nanos of last time a window was connected
@@ -291,6 +292,7 @@ func (a *app) handleScan(w http.ResponseWriter, r *http.Request) {
 			if res.Root == "" {
 				res.Root = root
 			}
+			a.gen++
 			a.res, a.phase = res, "results"
 		}
 	}()
@@ -375,8 +377,11 @@ func (a *app) handleResults(w http.ResponseWriter, r *http.Request) {
 		}
 		sets = append(sets, sj)
 	}
+	a.mu.Lock()
+	gen := a.gen
+	a.mu.Unlock()
 	writeJSON(w, map[string]any{
-		"root": res.Root, "scanned": len(res.Photos), "unreadable": res.Unreadable, "remembered": res.Remembered, "faces": res.Faces,
+		"gen": gen, "root": res.Root, "scanned": len(res.Photos), "unreadable": res.Unreadable, "remembered": res.Remembered, "faces": res.Faces,
 		"level": res.Level.Name, "seconds": int(res.Took.Seconds()), "sets": sets,
 	})
 }
@@ -529,6 +534,19 @@ func (a *app) handleOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "1"})
 }
 
+// photoFor finds the photo a preview address asks for. The address carries
+// the scan number (g), and a preview from an earlier scan is refused rather
+// than showing the wrong photo.
+func (a *app) photoFor(r *http.Request, prefix string) *photo {
+	a.mu.Lock()
+	gen := a.gen
+	a.mu.Unlock()
+	if r.URL.Query().Get("g") != strconv.Itoa(gen) {
+		return nil
+	}
+	return a.photoByID(idFromPath(r.URL.Path, prefix))
+}
+
 func (a *app) photoByID(id int) *photo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -547,7 +565,7 @@ func idFromPath(p, prefix string) int {
 }
 
 func (a *app) handleThumb(w http.ResponseWriter, r *http.Request) {
-	ph := a.photoByID(idFromPath(r.URL.Path, "/thumb/"))
+	ph := a.photoFor(r, "/thumb/")
 	if ph == nil {
 		http.NotFound(w, r)
 		return
@@ -563,7 +581,7 @@ func (a *app) handleThumb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleImage(w http.ResponseWriter, r *http.Request) {
-	ph := a.photoByID(idFromPath(r.URL.Path, "/img/"))
+	ph := a.photoFor(r, "/img/")
 	if ph == nil {
 		http.NotFound(w, r)
 		return
